@@ -1,17 +1,25 @@
 openapi: 3.0.0
+
 servers:
   - description: API Marketplace api - mocking example api
-    url: https://virtserver.swaggerhub.com/HMCTS-DTS/api-hmcts-crime-template/1.0.0
+    url: https://virtserver.swaggerhub.com/HMCTS-DTS/api-cp-civil-caseadmin-case-management/0.1.0
 
 info:
-  title: API Marketplace api - example api
-  description: API Marketplace api - simple example
-  version: 1.0.0
+  title: Civil Case Management - Group Case API
+  description: >-
+    API for creating, searching, viewing and splitting civil group (bulk) cases held by the
+    case-management service. Case membership and individual case data remain owned by the
+    Progression context; this API owns the group_case record.
+  version: 0.1.0
   contact:
     email: no-reply@hmcts.com
   license:
     name: MIT
     url: 'https://opensource.org/licenses/MIT'
+
+security:
+  - bearerAuth: []
+    subscriptionKey: []
 
 paths:
   /:
@@ -20,7 +28,7 @@ paths:
       operationId: getRoot
       tags:
         - root
-
+      security: []
       responses:
         '200':
           description: OK
@@ -30,48 +38,564 @@ paths:
                 type: string
                 example: Hello
 
-  /example/{example_id}:
-    get:
-      description: Get example for example_id
-      operationId: getExampleByExampleId
+  /groupcases:
+    post:
+      operationId: createGroupCase
       tags:
-        - examples
+        - group-cases
+      summary: Create a group case
+      description: >-
+        Creates a new group_case entry. Used when a group case is received from an external source
+        (CPCI/CSV) via prosecution-casefile, and also during a split of a group case in the
+        extract cases process. Permission: system user only. Audit required: No.
+        Rejects a payload whose groupId already exists (409) and a parentGroupId that does not
+        exist (404).
       parameters:
-        - in: path
-          name: example_id
-          required: true
-          description: Unique id for the example - long
-          schema:
-            type: integer
-            format: int64
+        - $ref: '#/components/parameters/CjscppuidHeader'
+        - $ref: '#/components/parameters/CppclientcorrelationidHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupCaseRequest'
       responses:
         '200':
-          description:  Examples found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ExampleResponse"
+          description: Group case created
         '400':
-          description: Bad input parameter
+          description: Bad request (invalid payload)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Access control violation (not a system user)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Referenced group case not found (e.g. parentGroupId does not exist)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: A group case with this groupId already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /groupcases/search:
+    get:
+      operationId: searchGroupCases
+      tags:
+        - group-cases
+      summary: Search group cases by hearing location and date
+      description: >-
+        Returns a paginated summary list of group cases matching the hearing court location and date.
+        Member case ids are not returned. No matches returns 200 with an empty list.
+        Permission: view_group_case (Court Admin, Legal Advisor). Audit required: Yes.
+      parameters:
+        - $ref: '#/components/parameters/CjscppuidHeader'
+        - $ref: '#/components/parameters/CppclientcorrelationidHeader'
+        - in: query
+          name: courtHearingLocation
+          required: true
+          description: Court house and room as a single OU code (7 characters, final 2 denote the courtroom)
+          schema:
+            type: string
+        - in: query
+          name: dateOfHearing
+          required: true
+          description: Date of the hearing
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: page
+          required: false
+          description: Zero-based page index
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - in: query
+          name: pageSize
+          required: false
+          description: Number of results per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Page of matching group cases (possibly empty)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupCaseSearchResponse'
+        '400':
+          description: Mandatory query parameters missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Access control violation (view_group_case required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /groupcases/resultintent:
+    get:
+      operationId: getGroupCaseResultingIntents
+      tags:
+        - group-cases
+      summary: Get the resulting intent for one or more group cases
+      description: >-
+        Returns the resulting intent for each requested group id. Used by manage hearing screens, either
+        directly by HMCTS staff (view_group_case) or by the hearing query API as a system user.
+        Audit required: Yes. Group ids that are not found are omitted from the response (partial
+        lookup); if none are found the response is 200 with an empty list.
+      parameters:
+        - $ref: '#/components/parameters/CjscppuidHeader'
+        - $ref: '#/components/parameters/CppclientcorrelationidHeader'
+        - in: query
+          name: groupIds
+          required: true
+          description: Comma-separated list of group case ids (at least one)
+          style: form
+          explode: false
+          schema:
+            type: array
+            minItems: 1
+            items:
+              type: string
+              format: uuid
+      responses:
+        '200':
+          description: Resulting intent per group case
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupCaseResultingIntentsResponse'
+        '400':
+          description: groupIds not provided or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Access control violation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /groupcases/{groupId}:
+    get:
+      operationId: getGroupCase
+      tags:
+        - group-cases
+      summary: View a group case
+      description: >-
+        Returns the group case with its current active member cases (aggregated from Progression).
+        Removed cases are not returned. If caseCount differs from the number of member cases returned,
+        the UI should show a mismatch warning. Permission: view_group_case (Court Admin, Legal Advisor).
+        Audit required: Yes.
+      parameters:
+        - $ref: '#/components/parameters/CjscppuidHeader'
+        - $ref: '#/components/parameters/CppclientcorrelationidHeader'
+        - $ref: '#/components/parameters/GroupIdPath'
+        - in: query
+          name: referredCaseId
+          required: false
+          description: Id of the member case the page was accessed from, so the UI can place it first. Echoed back in the response.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Group case found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupCaseResponse'
+        '403':
+          description: Access control violation (view_group_case required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Group case not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /groupcases/{groupId}/extractcases:
+    post:
+      operationId: extractGroupCases
+      tags:
+        - group-cases
+      summary: Extract cases from a group case
+      description: >-
+        Removes one or more cases from the group, either to individual standalone cases (newGroup=false)
+        or to a newly created group case (newGroup=true). For a new group the back end generates the
+        groupId and chooses the lead case. If the original lead case is extracted, the back end selects
+        a new lead for the original group and reduces its caseCount. Rejected (400) if one or fewer cases
+        would remain in the original group. Permission: edit_group_case (Court Admin, Legal Advisor).
+        Audit required: Yes.
+      parameters:
+        - $ref: '#/components/parameters/CjscppuidHeader'
+        - $ref: '#/components/parameters/CppclientcorrelationidHeader'
+        - $ref: '#/components/parameters/GroupIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExtractCasesRequest'
+      responses:
+        '200':
+          description: Cases extracted. newGroupId is populated only when a new group was created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractCasesResponse'
+        '400':
+          description: Invalid payload, or fewer than 2 cases would remain in the original group
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Access control violation (edit_group_case required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Group case not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    subscriptionKey:
+      type: apiKey
+      in: header
+      name: Ocp-Apim-Subscription-Key
+      description: >-
+        HMCTS APIM subscription key identifying the consuming system. Issued
+        per consumer when their APIM product subscription is provisioned.
+
+  parameters:
+    CjscppuidHeader:
+      in: header
+      name: CJSCPPUID
+      required: true
+      schema:
+        type: string
+      description: User identifier for CP authentication
+
+    CppclientcorrelationidHeader:
+      in: header
+      name: CPPCLIENTCORRELATIONID
+      required: false
+      schema:
+        type: string
+      description: Session-level correlation ID from UI
+
+    GroupIdPath:
+      in: path
+      name: groupId
+      required: true
+      description: Unique id of the group case
+      schema:
+        type: string
+        format: uuid
+
   schemas:
-    ExampleResponse:
-      description: Details of examples associated with the example id
+    ResultingIntent:
+      type: string
+      description: >-
+        The intended result to be issued against the group case. Selected by the user when cases
+        are split out of a group.
+      enum:
+        - ADJOURN
+        - WITHDRAW
+
+    LeadCase:
       type: object
+      description: Summary of the lead case of a group. Contains personal data (defendant name, date of birth).
+      required:
+        - leadCaseId
+        - caseUrn
+        - defendantName
       properties:
-        exampleId:
-          description: Id of the example - long
+        leadCaseId:
+          type: string
+          format: uuid
+          description: Progression case id of the lead case
+        caseUrn:
+          type: string
+          description: Case URN of the lead case
+        defendantName:
+          type: string
+          description: Name of the lead defendant (personal data)
+        defendantDoB:
+          type: string
+          format: date
+          description: Date of birth of the lead defendant (personal data)
+
+    CreateGroupCaseRequest:
+      type: object
+      required:
+        - groupId
+        - leadCase
+        - dateOfHearing
+        - caseCount
+        - offenceType
+        - courtHearingLocation
+        - prosecutingAuthority
+      properties:
+        groupId:
+          type: string
+          format: uuid
+          description: Id of the group, supplied by the caller (shared with Progression group_id)
+        leadCase:
+          $ref: '#/components/schemas/LeadCase'
+        dateOfHearing:
+          type: string
+          format: date
+          description: Date of the hearing
+        caseCount:
+          type: integer
+          minimum: 1
+          description: Number of cases in the group
+        offenceType:
+          type: string
+          description: Type of offence, for example Council Tax or Business Rates
+        courtHearingLocation:
+          type: string
+          description: Court location as OU code (7 characters, final 2 denote the courtroom)
+        prosecutingAuthority:
+          type: string
+          description: Prosecuting authority as OU code
+        parentGroupId:
+          type: string
+          format: uuid
+          description: Group this group was extracted from. Omitted for an initial submission.
+        resultingIntent:
+          $ref: '#/components/schemas/ResultingIntent'
+
+    GroupCaseSummary:
+      type: object
+      required:
+        - groupId
+        - prosecutingAuthority
+        - leadCase
+        - resultingIntent
+      properties:
+        groupId:
+          type: string
+          format: uuid
+        prosecutingAuthority:
+          type: string
+          description: Prosecuting authority name, resolved from reference data by the service
+        leadCase:
+          $ref: '#/components/schemas/LeadCase'
+        resultingIntent:
+          $ref: '#/components/schemas/ResultingIntent'
+
+    GroupCaseSearchResponse:
+      type: object
+      required:
+        - groupCases
+        - page
+        - pageSize
+        - totalElements
+        - totalPages
+      properties:
+        groupCases:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupCaseSummary'
+        page:
+          type: integer
+          description: Zero-based page index
+        pageSize:
+          type: integer
+        totalElements:
           type: integer
           format: int64
-        exampleText:
-          description: Information associated with the example id
+        totalPages:
+          type: integer
+
+    GroupMemberCase:
+      type: object
+      required:
+        - caseId
+        - caseUrn
+        - defendantName
+      properties:
+        caseId:
           type: string
-          example: "Some text"
+          format: uuid
+        caseUrn:
+          type: string
+        defendantName:
+          type: string
+          description: Defendant name (personal data)
+        defendantDoB:
+          type: string
+          format: date
+          description: Defendant date of birth (personal data)
+
+    GroupCaseResponse:
+      type: object
+      required:
+        - groupId
+        - prosecutingAuthority
+        - courtHearingLocation
+        - dateOfHearing
+        - offenceType
+        - leadCaseId
+        - cases
+        - createdDate
+        - resultingIntent
+      properties:
+        groupId:
+          type: string
+          format: uuid
+        prosecutingAuthority:
+          type: string
+        courtHearingLocation:
+          type: string
+          description: Court location as OU code
+        dateOfHearing:
+          type: string
+          format: date
+        offenceType:
+          type: string
+        leadCaseId:
+          type: string
+          format: uuid
+          description: Lead case id; lead case details are the entry in cases with the same caseId
+        referredCaseId:
+          type: string
+          format: uuid
+          description: Echo of the referredCaseId query parameter, if supplied
+        cases:
+          type: array
+          description: Current active member cases of the group
+          items:
+            $ref: '#/components/schemas/GroupMemberCase'
+        caseCount:
+          type: integer
+          description: Stored case count, for UI mismatch check against the size of cases
+        createdDate:
+          type: string
+          format: date
+          description: Date the group was created
+        resultingIntent:
+          $ref: '#/components/schemas/ResultingIntent'
+
+    GroupCaseResultingIntent:
+      type: object
+      required:
+        - groupId
+        - resultingIntent
+      properties:
+        groupId:
+          type: string
+          format: uuid
+        resultingIntent:
+          $ref: '#/components/schemas/ResultingIntent'
+
+    GroupCaseResultingIntentsResponse:
+      type: object
+      required:
+        - groupCases
+      properties:
+        groupCases:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupCaseResultingIntent'
+
+    ExtractCasesRequest:
+      type: object
+      required:
+        - caseIds
+        - newGroup
+        - resultingIntent
+      properties:
+        caseIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+          description: Ids of the cases to extract
+        leadCaseId:
+          type: string
+          format: uuid
+          description: Optional. Supplied if the original lead case is being extracted; must match one of caseIds.
+        newGroup:
+          type: boolean
+          description: true if the extracted cases form a new group, false for individual cases
+        resultingIntent:
+          $ref: '#/components/schemas/ResultingIntent'
+
+    ExtractCasesResponse:
+      type: object
+      properties:
+        newGroupId:
+          type: string
+          format: uuid
+          description: Id of the newly created group. Omitted when newGroup was false.
 
     ErrorResponse:
       type: object
