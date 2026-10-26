@@ -2,7 +2,7 @@ openapi: 3.0.0
 
 servers:
   - description: API Marketplace api - mocking example api
-    url: https://virtserver.swaggerhub.com/HMCTS-DTS/api-cp-civil-caseadmin-case-management/0.1.0
+    url: https://virtserver.swaggerhub.com/HMCTS-DTS/api-cp-crime-caseadmin-case-management/0.1.0
 
 info:
   title: Civil Case Management - Group Case API
