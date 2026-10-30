@@ -21,6 +21,12 @@ security:
   - bearerAuth: []
     subscriptionKey: []
 
+tags:
+  - name: root
+    description: Root/health endpoint
+  - name: group-cases
+    description: Group case management operations
+
 paths:
   /:
     get:
