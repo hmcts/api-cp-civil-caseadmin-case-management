@@ -5,9 +5,11 @@ import org.junit.jupiter.api.Test;
 import uk.gov.hmcts.cp.openapi.api.GroupCasesApi;
 import uk.gov.hmcts.cp.openapi.api.RootApi;
 import uk.gov.hmcts.cp.openapi.model.CreateGroupCaseRequest;
+import uk.gov.hmcts.cp.openapi.model.DefendantAddress;
 import uk.gov.hmcts.cp.openapi.model.ErrorResponse;
 import uk.gov.hmcts.cp.openapi.model.ExtractCasesRequest;
 import uk.gov.hmcts.cp.openapi.model.GroupCaseResponse;
+import uk.gov.hmcts.cp.openapi.model.GroupMemberCase;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,7 +35,18 @@ class OpenApiObjectsTest {
 
     @Test
     void generated_group_case_response_should_have_expected_fields() {
-        assertThat(GroupCaseResponse.class).hasDeclaredFields("groupId", "referredCaseId", "cases", "createdDate", "resultingIntent");
+        assertThat(GroupCaseResponse.class).hasDeclaredFields("groupId", "leadCase", "referredCaseId", "cases", "createdDate", "resultingIntent");
+    }
+
+    @Test
+    void generated_group_member_case_should_have_expected_fields() {
+        assertThat(GroupMemberCase.class).hasDeclaredFields("caseId", "caseUrn", "defendantName", "defendantDoB", "address");
+    }
+
+    @Test
+    void generated_defendant_address_should_have_expected_fields() {
+        assertThat(DefendantAddress.class).hasDeclaredFields(
+                "address1", "address2", "address3", "address4", "address5", "postcode");
     }
 
     @Test

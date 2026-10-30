@@ -21,6 +21,12 @@ security:
   - bearerAuth: []
     subscriptionKey: []
 
+tags:
+  - name: root
+    description: Root/health endpoint
+  - name: group-cases
+    description: Group case management operations
+
 paths:
   /:
     get:
@@ -493,6 +499,41 @@ components:
           type: string
           format: date
           description: Defendant date of birth (personal data)
+        address:
+          $ref: '#/components/schemas/DefendantAddress'
+
+    DefendantAddress:
+      type: object
+      description: Address of the defendant (personal data)
+      required:
+        - address1
+      properties:
+        address1:
+          type: string
+          description: Address Line 1 for the defendant
+          minLength: 1
+          maxLength: 35
+        address2:
+          type: string
+          description: Address Line 2 for the defendant
+          maxLength: 35
+        address3:
+          type: string
+          description: Address Line 3 for the defendant
+          maxLength: 35
+        address4:
+          type: string
+          description: Address Line 4 for the defendant
+          maxLength: 35
+        address5:
+          type: string
+          description: Address Line 5 for the defendant
+          maxLength: 35
+        postcode:
+          type: string
+          description: UK Post Code (CGS DSC 5.25)
+          pattern: '^[A-Z]{1,2}[0-9][A-Z0-9]?\s?[0-9][A-Z]{2}$'
+          maxLength: 8
 
     GroupCaseResponse:
       type: object
@@ -502,7 +543,7 @@ components:
         - courtHearingLocation
         - dateOfHearing
         - offenceType
-        - leadCaseId
+        - leadCase
         - cases
         - createdDate
         - resultingIntent
@@ -520,10 +561,8 @@ components:
           format: date
         offenceType:
           type: string
-        leadCaseId:
-          type: string
-          format: uuid
-          description: Lead case id; lead case details are the entry in cases with the same caseId
+        leadCase:
+          $ref: '#/components/schemas/GroupMemberCase'
         referredCaseId:
           type: string
           format: uuid
